@@ -108,11 +108,12 @@ def collect_fs_data(
     regex_path_v7,
     regex_path_v8,
     structures,
-    file_name="aseg.stats"):
+    file_name="aseg.stats",
+    metric="ThickAvg"
+    ):
     """
     Parses FreeSurfer directories, extracts volumes/thicknesses for given structures, 
     and calculates the relative difference between version 7 and version 8.
-
     The function matches subjects and sessions present in both versions, 
     searches for the specified statistics file, and compiles the results into a DataFrame.
 
@@ -126,7 +127,8 @@ def collect_fs_data(
         List of anatomical structure names to extract (e.g., ['Left-Hippocampus', 'Brain-Stem']).
     file_name : str, optional
         Name of the stats file to parse. Supports "aseg.stats" or atlas files 
-        such as "aparc.stats". Default is "aseg.stats".
+        such as "lh.aparc.DSKatlas.stats" or "lh.aparc.a2009s.stats".
+        Default is "aseg.stats".
 
     Returns
     -------
@@ -185,8 +187,8 @@ def collect_fs_data(
                 data7 = parse_aseg(f7, structures)
                 data8 = parse_aseg(f8, structures)
             if file_name.endswith("a2009s.stats") or file_name.endswith("DKTatlas.stats"):
-                data7 = parse_aparc_stats(f7, structures)
-                data8 = parse_aparc_stats(f8, structures)
+                data7 = parse_aparc_stats(f7, structures, metric=metric)
+                data8 = parse_aparc_stats(f8, structures, metric=metric)
 
             for struct in structures:
                 if struct in data7 and struct in data8 and data7[struct] != 0:
@@ -202,3 +204,69 @@ def collect_fs_data(
         except Exception as e:
             print(f"Erreur sur la paire {sub_id}_{ses_id} : {e}")
     return pd.DataFrame(results)
+
+
+def save_individual_plots(df, output_dir="plots", surfvol="Volume", metric="ThickAvg"): 
+    """
+    Generate and save individual comparison plots for each unique structure in the DataFrame.
+
+    This function iterates through all unique anatomical structures found in the 'Structure' 
+    column, performs a linear regression between v7 and v8 measurements, and exports 
+    a scatter plot including an identity line (y=x) and statistical metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame containing the data. Must include the following columns: 
+        'Subject', 'Session', 'Structure', 'v7', 'v8', and 'Diff_Perc'.
+    output_dir : str, optional
+        The directory path where the generated plots will be stored. 
+        Created automatically if it does not exist. Defaults to "plots".
+    surfvol : str, optional
+        Specifies the measurement type, either "Volume" or "Surface". 
+        Determines the units and axis labels. Defaults to "Volume".
+    metric : str, optional
+        The specific metric being analyzed when `surfvol` is set to "Surface" 
+        (e.g., "ThickAvg", "Area"). Defaults to "ThickAvg".
+
+    Returns
+    -------
+    None
+        The function saves PNG files to the disk and prints progress messages.
+    """
+    if df.empty:
+        print("Aucune donnée à tracer.")
+        return
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    structures_presentes = df["Structure"].unique()
+    sns.set_theme(style="whitegrid")
+    
+    for struct in structures_presentes:
+        subset = df[df["Structure"] == struct]
+        # stat calculation
+        slope, intercept, r_value, p_value, std_err = stats.linregress(subset["v7"], subset["v8"])
+
+        plt.figure(figsize=(8, 6))
+        sns.scatterplot(data=subset, x="v7", y="v8", alpha=0.6, color="royalblue", edgecolor="w")
+        
+        # Identity line y=x
+        all_vals = pd.concat([subset["v7"], subset["v8"]])
+        min_v, max_v = all_vals.min(), all_vals.max()
+        plt.plot([min_v, max_v], [min_v, max_v], color='red', linestyle='--', alpha=0.5, label="y = x")
+        
+        # Title and labels
+        # Note: Using LaTeX formatting for R^2 and Pearson r in the title
+        plt.title(f"Comparaison : {struct}\n$R^2 = {r_value**2:.3f}$ | Pearson $r = {r_value:.3f}$", fontsize=12)
+        if surfvol == "Volume":
+            plt.xlabel(f"Volume FreeSurfer v7.1 ($mm^3$)")
+            plt.ylabel(f"Volume FreeSurfer v8.1 ($mm^3$)")
+        elif surfvol == "Surface":
+            plt.xlabel(f"Surface FreeSurfer v7.1 ($mm^2$) ({metric})")
+            plt.ylabel(f"Surface FreeSurfer v8.1 ($mm^2$) ({metric})")
+        plt.legend()
+        # Filename cleaning
+        clean_name = struct.replace("-", "_")
+        plt.savefig(os.path.join(output_dir, f"comp_{clean_name}.png"), dpi=300)
+        plt.close()
+        print(f"Graphique généré : {output_dir}/comp_{clean_name}.png")

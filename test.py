@@ -44,25 +44,46 @@ MY_STRUCTURES_DKTatlas = [
 ]
 
 if __name__ == "__main__":
-    
-    df = collect_fs_data(
+    # Get the DataFrame with the comparison results
+    df_aseg = collect_fs_data(
              file_name = "aseg.stats",
              regex_path_v7 = REGEX_PATH_V7,
              regex_path_v8 = REGEX_PATH_V8,
              structures = MY_STRUCTURES
              )
-
     df_a2009s = collect_fs_data(
              file_name = "lh.aparc.a2009s.stats",
              regex_path_v7 = REGEX_PATH_V7,
              regex_path_v8 = REGEX_PATH_V8,
-             structures = MY_STRUCTURES_a2009s
+             structures = MY_STRUCTURES_a2009s,
+             metric="ThickAvg"
              )
-
     df_DKTatlas = collect_fs_data(
              file_name = "lh.aparc.DKTatlas.stats",
              regex_path_v7 = REGEX_PATH_V7,
              regex_path_v8 = REGEX_PATH_V8,
-             structures = MY_STRUCTURES_DKTatlas
+             structures = MY_STRUCTURES_DKTatlas,
+             metric="ThickAvg"
              )
 
+    # Save the dataframes to CSV in the "data" directory
+    df_aseg.to_csv("data/comparison_aseg.csv", index=True)
+    df_a2009s.to_csv("data/comparison_a2009s.csv", index=True)
+    df_DKTatlas.to_csv("data/comparison_DKTatlas.csv", index=True)
+
+    # Plots are generated and saved in the "plots" directory
+    save_individual_plots(
+        df,
+        output_dir="plots/plots_aseg")
+
+    save_individual_plots(
+        df_DKTatlas,
+        output_dir="plots/plots_DKTatlas",
+        surfvol="Surface",
+        metric="ThickAvg")
+
+    save_individual_plots(
+        df_a2009s,
+        output_dir="plots/plots_a2009s",
+        surfvol="Surface",
+        metric="ThickAvg")
